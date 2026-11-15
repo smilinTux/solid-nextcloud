@@ -4,7 +4,7 @@
         "Read more about it at https://getcomposer.org/doc/01-basic-usage.md#installing-dependencies",
         "This file is @generated automatically"
     ],
-    "content-hash": "613a5e0b3294ebc2a7c22b82325b60c7",
+    "content-hash": "932b4f8b9cb8076c407df7fd676433d9",
     "packages": [
         {
             "name": "brick/math",
@@ -1161,16 +1161,16 @@
         },
         {
             "name": "pdsinterop/solid-auth",
-            "version": "v0.16.0",
+            "version": "dev-smilintux-release",
             "source": {
                 "type": "git",
-                "url": "https://github.com/pdsinterop/php-solid-auth.git",
-                "reference": "94cea51a8379987270a464abdf1b742644e5e7f9"
+                "url": "https://github.com/smilinTux/php-solid-auth.git",
+                "reference": "99bfef170bca77e22e20d4a094fc639377bb38d4"
             },
             "dist": {
                 "type": "zip",
-                "url": "https://api.github.com/repos/pdsinterop/php-solid-auth/zipball/94cea51a8379987270a464abdf1b742644e5e7f9",
-                "reference": "94cea51a8379987270a464abdf1b742644e5e7f9",
+                "url": "https://api.github.com/repos/smilinTux/php-solid-auth/zipball/99bfef170bca77e22e20d4a094fc639377bb38d4",
+                "reference": "99bfef170bca77e22e20d4a094fc639377bb38d4",
                 "shasum": ""
             },
             "require": {
@@ -1197,16 +1197,27 @@
                     "Pdsinterop\\Solid\\Auth\\": "src/"
                 }
             },
-            "notification-url": "https://packagist.org/downloads/",
+            "autoload-dev": {
+                "psr-4": {
+                    "Pdsinterop\\Solid\\Auth\\": "tests/unit/"
+                }
+            },
+            "scripts": {
+                "tests:example": [
+                    "php -S localhost:8080 -t ./tests/ ./tests/example.php"
+                ],
+                "tests:unit": [
+                    "phpunit --configuration `.config/phpunit.xml.dist` ./tests/unit"
+                ]
+            },
             "license": [
                 "MIT"
             ],
             "description": "OAuth2, OpenID and OIDC for Solid Server implementations.",
             "support": {
-                "issues": "https://github.com/pdsinterop/php-solid-auth/issues",
-                "source": "https://github.com/pdsinterop/php-solid-auth/tree/v0.16.0"
+                "source": "https://github.com/smilinTux/php-solid-auth/tree/smilintux-release"
             },
-            "time": "2026-11-03T10:47:34+00:00"
+            "time": "2026-11-15T20:53:33+00:00"
         },
         {
             "name": "pdsinterop/solid-crud",
@@ -4314,9 +4325,18 @@
             "time": "2025-11-17T20:03:58+00:00"
         }
     ],
-    "aliases": [],
+    "aliases": [
+        {
+            "package": "pdsinterop/solid-auth",
+            "version": "dev-smilintux-release",
+            "alias": "0.16.1",
+            "alias_normalized": "0.16.1.0"
+        }
+    ],
     "minimum-stability": "stable",
-    "stability-flags": [],
+    "stability-flags": {
+        "pdsinterop/solid-auth": 20
+    },
     "prefer-stable": false,
     "prefer-lowest": false,
     "platform": {
@@ -4326,6 +4346,6 @@
         "ext-mbstring": "*",
         "ext-openssl": "*"
     },
-    "platform-dev": [],
-    "plugin-api-version": "2.2.0"
+    "platform-dev": {},
+    "plugin-api-version": "2.11.0"
 }

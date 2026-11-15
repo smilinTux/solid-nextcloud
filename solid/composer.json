@@ -20,6 +20,12 @@
             "name": "Yvo Brevoort"
         }
     ],
+    "repositories": [
+        {
+            "type": "vcs",
+            "url": "https://github.com/smilinTux/php-solid-auth"
+        }
+    ],
     "require": {
         "php": "^8.3",
         "ext-dom": "*",
@@ -30,7 +36,7 @@
         "lcobucci/jwt": "^4.1",
         "pdsinterop/flysystem-nextcloud": "v0.5.0",
         "pdsinterop/flysystem-rdf": "^0.7",
-        "pdsinterop/solid-auth": "v0.16.0",
+        "pdsinterop/solid-auth": "dev-smilintux-release as 0.16.1",
         "pdsinterop/solid-crud": "v0.10.0",
         "phrity/websocket": "^3.5",
         "sweetrdf/easyrdf": ">=1.15.0 <1.16.0"
