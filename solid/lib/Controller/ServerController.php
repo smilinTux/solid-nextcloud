@@ -205,18 +205,17 @@ class ServerController extends Controller
 			if (isset($parsedOrigin['port'])) {
 				$origin .= ":" . $parsedOrigin['port'];
 			}
-			$clientData = array(
-				"client_id_issued_at" => time(),
-				"client_name" => $getVars['client_id'],
-				"origin" => $origin,
-				"redirect_uris" => array(
-					$getVars['redirect_uri']
-				)
+			// Use a stable registration for this client and redirect URI. A new
+			// registration on every request meant the user's approval never
+			// applied to the next request, and returning to the redirect URI
+			// after approval sent the user back to the app without a code.
+			$clientRegistration = $this->config->getClientIdDocumentRegistration(
+				$getVars['client_id'],
+				$getVars['redirect_uri'],
+				$origin
 			);
-
-			$clientId = $this->config->saveClientRegistration($clientData)['client_id'];
-			$returnUrl = $getVars['redirect_uri'];
-			$clientRegistration = $this->config->getClientRegistration($clientId);
+			$clientId = $clientRegistration['client_id'];
+			$returnUrl = $_SERVER['REQUEST_URI'];
 			// @FIXME: Implement $clientRegistration = $this->fetchRemoteClientDocument($getVars['client_id'])
 			//        to replace this section of this `if` statement.
 		} else {
