@@ -124,7 +124,29 @@ class ServerController extends Controller
 			// in which case the client_id is not in the request body.
 			$clientId = $this->getBasicAuthClientId();
 		}
-		$client = $this->getClient($clientId);
+		if (
+			$clientId !== null
+			&& preg_match("/^http(s)?:/", $clientId)
+			&& isset($_GET['redirect_uri'])
+			&& is_string($_GET['redirect_uri'])
+		) {
+			// A Client Identifier Document has no registration under its URL.
+			// Use the registration for this client and redirect URI, but keep
+			// the URL as the client identifier the authorization code is issued to.
+			$registration = $this->config->getClientIdDocumentRegistration(
+				$clientId,
+				$_GET['redirect_uri'],
+				$this->getOrigin($_GET['redirect_uri'])
+			);
+			$client = new \Pdsinterop\Solid\Auth\Config\Client(
+				$clientId,
+				'',
+				$registration['redirect_uris'],
+				$registration['client_name']
+			);
+		} else {
+			$client = $this->getClient($clientId);
+		}
 		$keys = $this->getKeys();
 		try {
 			return (new \Pdsinterop\Solid\Auth\Factory\ConfigFactory(
@@ -206,11 +228,7 @@ class ServerController extends Controller
 		}
 
 		if (preg_match("/^http(s)?:/", $getVars['client_id'])) {
-			$parsedOrigin = parse_url($getVars['redirect_uri']);
-			$origin = $parsedOrigin['scheme'] . '://' . $parsedOrigin['host'];
-			if (isset($parsedOrigin['port'])) {
-				$origin .= ":" . $parsedOrigin['port'];
-			}
+			$origin = $this->getOrigin($getVars['redirect_uri']);
 			// Use a stable registration for this client and redirect URI. A new
 			// registration on every request meant the user's approval never
 			// applied to the next request, and returning to the redirect URI
@@ -373,6 +391,15 @@ class ServerController extends Controller
 
 	private function getProfilePageForUser(string $userId): string {
 		return $this->urlGenerator->getAbsoluteURL($this->urlGenerator->linkToRoute("solid.profile.handleGet", array("userId" => $userId, "path" => "/card"))) . "#me";
+	}
+
+	private function getOrigin(string $uri): string {
+		$parsedOrigin = parse_url($uri);
+		$origin = ($parsedOrigin['scheme'] ?? '') . '://' . ($parsedOrigin['host'] ?? '');
+		if (isset($parsedOrigin['port'])) {
+			$origin .= ":" . $parsedOrigin['port'];
+		}
+		return $origin;
 	}
 
 	private function getProfilePage() {
