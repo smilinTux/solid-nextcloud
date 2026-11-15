@@ -289,6 +289,53 @@ class ServerControllerTest extends TestCase
 		$this->assertEquals($expected, $actual);
 	}
 
+	/**
+	 * @testdox ServerController should not add an ID token to the redirect URI in the authorization code flow
+	 *
+	 * @covers ::authorize
+	 */
+	public function testAuthorizeWithCodeResponseTypeOmitsIdToken()
+	{
+		$_GET = [
+			'client_id' => self::MOCK_CLIENT_ID,
+			'code_challenge' => 'E9Melhoa2OwvFrEMTJguCHaoeK1t8URWbuGJSstw-cM',
+			'code_challenge_method' => 'S256',
+			'nonce' => 'mock-nonce',
+			'redirect_uri' => 'https://mock.client/redirect',
+			'response_type' => 'code',
+			'state' => 'mock-state',
+		];
+		$_SERVER['REQUEST_URI'] = '/apps/solid/authorize';
+
+		$clientData = json_encode(['client_name' => 'Mock Client', 'redirect_uris' => ['https://mock.client/redirect']]);
+
+		$parameters = $this->createMockConstructorParameters($clientData);
+
+		$this->mockConfig->method('getUserValue')
+			->with(self::MOCK_USER_ID, Application::APP_ID, 'allowedClients', '[]')
+			->willReturn(json_encode([self::MOCK_CLIENT_ID]));
+
+		$this->mockUserManager->method('userExists')->willReturn(true);
+
+		$controller = new ServerController(...$parameters);
+
+		try {
+			$response = $controller->authorize();
+		} finally {
+			$_GET = [];
+		}
+
+		$this->assertEquals(Http::STATUS_FOUND, $response->getStatus());
+
+		$location = parse_url($response->getHeaders()['Location'] ?? '');
+		parse_str($location['query'] ?? '', $query);
+
+		$this->assertEquals('https://mock.client/redirect', "{$location['scheme']}://{$location['host']}{$location['path']}");
+		$this->assertArrayHasKey('code', $query);
+		$this->assertEquals('mock-state', $query['state']);
+		$this->assertArrayNotHasKey('id_token', $query);
+	}
+
     /**
      * @testdox ServerController should return a 302 redirect when asked to authorize client that has been approved
      *
@@ -394,7 +441,7 @@ class ServerControllerTest extends TestCase
 	}
 
 	/**
-	 * @testdox ServerController should return a 200 with client data when asked to register with valid redirect URIs
+	 * @testdox ServerController should return a 201 with client data when asked to register with valid redirect URIs
 	 *
 	 * @covers ::register
 	 */
@@ -421,7 +468,7 @@ class ServerControllerTest extends TestCase
 			'response_types' => ['id_token token'],
 			'token_endpoint_auth_method' => 'client_secret_basic',
 		];
-		$expected = $this->createExpectedResponse(Http::STATUS_OK, $data);
+		$expected = $this->createExpectedResponse(Http::STATUS_CREATED, $data);
 
 		$actualData = $response->getData();
 		$this->assertArrayHasKey('client_id', $actualData);
@@ -518,6 +565,134 @@ class ServerControllerTest extends TestCase
 
 
 		$this->assertEquals($expected, $actual);
+	}
+
+	/**
+	 * @testdox ServerController should read the client_id from an HTTP Basic Authorization header when generating a token
+	 *
+	 * @covers ::token
+	 */
+	public function testTokenWithClientSecretBasic()
+	{
+		unset($_POST['client_id']);
+		$_POST['code'] = '';
+		$_POST['grant_type'] = 'authorization_code';
+		$_SERVER['HTTP_AUTHORIZATION'] = 'Basic ' . base64_encode(urlencode(self::MOCK_CLIENT_ID) . ':mock secret');
+		$_SERVER['HTTP_DPOP'] = 'mock dpop';
+		$_SESSION['nonce'] = 'mock nonce';
+
+		$parameters = $this->createMockConstructorParameters();
+
+		$mockTokenGenerator = $this->createMock(\Pdsinterop\Solid\Auth\TokenGenerator::class);
+		$mockTokenGenerator->method('getCodeInfo')->willReturn(['user_id' => self::MOCK_USER_ID]);
+		$mockTokenGenerator->expects($this->once())
+			->method('addIdTokenToResponse')
+			->with(
+				$this->isInstanceOf(Response::class),
+				self::MOCK_CLIENT_ID,
+				self::MOCK_USER_ID,
+				$_SESSION['nonce'],
+				self::$privateKey,
+				$_SERVER['HTTP_DPOP'],
+			)
+			->willReturn(new Response('php://memory', Http::STATUS_IM_A_TEAPOT, [
+				'Content-Type' => 'mock application type'
+			]));
+
+		try {
+			$controller = new ServerController(...$parameters);
+
+			$reflectionObject = new \ReflectionObject($controller);
+			$reflectionProperty = $reflectionObject->getProperty('tokenGenerator');
+			$reflectionProperty->setValue($controller, $mockTokenGenerator);
+
+			$tokenResponse = $controller->token();
+		} finally {
+			unset($_SERVER['HTTP_AUTHORIZATION']);
+		}
+
+		$this->assertEquals(Http::STATUS_IM_A_TEAPOT, $tokenResponse->getStatus());
+	}
+
+	/**
+	 * @testdox ServerController should bind a client_credentials token to the WebID of the user who created the credentials
+	 *
+	 * @covers ::token
+	 */
+	public function testTokenWithBoundClientCredentials()
+	{
+		$this->assertSame(
+			'https://mock.server/apps/solid/~agent/profile/card#me',
+			$this->requestClientCredentialsToken(['solid_user_id' => 'agent', 'grant_types' => ['client_credentials']], true)
+		);
+	}
+
+	/**
+	 * @testdox ServerController should not bind a client_credentials token to a WebID for a client that no user created
+	 *
+	 * @covers ::token
+	 * @dataProvider provideUnboundRegistrations
+	 */
+	public function testTokenWithUnboundClientCredentials(array $registration, bool $userExists)
+	{
+		$this->assertNull($this->requestClientCredentialsToken($registration, $userExists));
+	}
+
+	public static function provideUnboundRegistrations(): array
+	{
+		return [
+			'dynamic registration' => [['grant_types' => ['client_credentials']], true],
+			'bound user without the client_credentials grant' => [['solid_user_id' => 'agent'], true],
+			'bound user that no longer exists' => [['solid_user_id' => 'agent', 'grant_types' => ['client_credentials']], false],
+		];
+	}
+
+	/**
+	 * Requests a client_credentials token and returns the subject passed to the token generator, or null
+	 */
+	private function requestClientCredentialsToken(array $registration, bool $userExists): ?string
+	{
+		$_POST = ['grant_type' => 'client_credentials'];
+		$_SERVER['HTTP_AUTHORIZATION'] = 'Basic ' . base64_encode(self::MOCK_CLIENT_ID . ':mock secret');
+
+		$clientData = json_encode(array_merge([
+			'client_id' => self::MOCK_CLIENT_ID,
+			'client_name' => 'Mock Client',
+			'client_secret' => 'mock secret',
+			'redirect_uris' => [],
+		], $registration));
+
+		$parameters = $this->createMockConstructorParameters($clientData);
+		$this->mockUserManager->method('userExists')->willReturn($userExists);
+		$this->mockURLGenerator->method('linkToRoute')->willReturnCallback(
+			fn ($route, $params = []) => isset($params['userId'])
+				? '/apps/solid/~' . $params['userId'] . '/profile' . $params['path']
+				: '/apps/solid/' . $route
+		);
+		$this->mockURLGenerator->method('getAbsoluteURL')->willReturnCallback(fn ($url) => 'https://mock.server' . $url);
+
+		$subject = null;
+		$mockTokenGenerator = $this->createMock(\Pdsinterop\Solid\Auth\TokenGenerator::class);
+		$mockTokenGenerator->method('addIdTokenToResponse')->willReturnCallback(
+			function ($response, $clientId, $userId) use (&$subject) {
+				$subject = $userId;
+				return $response;
+			}
+		);
+
+		try {
+			$controller = new ServerController(...$parameters);
+
+			$reflectionProperty = (new \ReflectionObject($controller))->getProperty('tokenGenerator');
+			$reflectionProperty->setValue($controller, $mockTokenGenerator);
+
+			$controller->token();
+		} finally {
+			$_POST = [];
+			unset($_SERVER['HTTP_AUTHORIZATION']);
+		}
+
+		return $subject;
 	}
 
 	/**
